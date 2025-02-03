@@ -1,0 +1,17 @@
+universe                = parallel
+
+executable              = /home/deblasio_2082600/Parallel-KMeans/openmpiscript.sh
+arguments               = /home/deblasio_2082600/Parallel-KMeans/KMEANS_mpi.out /home/deblasio_2082600/Parallel-KMeans/test_files/input100D2.inp 15 5000 1 0.0001 out100D2mpi.txt
+
+getenv                  = true
+
+log                     = logs/job.log
+output                  = logs/job.out
+error                   = logs/job.err
+
+machine_count           = 16
+
+should_transfer_files   = yes
+when_to_transfer_output = on_exit
+
+queue
