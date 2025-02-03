@@ -239,13 +239,13 @@ int main(int argc, char *argv[])
      * argv[6]: Output file. Class assigned to each point of the input file.
      * argv[7]: (OPTIONAL) Number of threads for OpenMP
      * */
-    if (argc != 7) && !(argc == 8))
-        {
-            fprintf(stderr, "EXECUTION ERROR K-MEANS: Parameters are not correct.\n");
-            fprintf(stderr, "./KMEANS [Input Filename] [Number of clusters] [Number of iterations] [Number of changes] [Threshold] [Output data file]\n");
-            fflush(stderr);
-            MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-        }
+    if ((argc != 7) && (argc != 8))
+    {
+        fprintf(stderr, "EXECUTION ERROR K-MEANS: Parameters are not correct.\n");
+        fprintf(stderr, "./KMEANS [Input Filename] [Number of clusters] [Number of iterations] [Number of changes] [Threshold] [Output data file]\n");
+        fflush(stderr);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }
 
     // Set the number of OpenMP threads
     int threads = 8;
@@ -429,8 +429,8 @@ int main(int argc, char *argv[])
 
         int local_changes = 0; // counter for changes in cluster assignments, local to each process
 
-        // For each local point...
-        #pragma omp parallel for reduction(+:local_changes) schedule(static)
+// For each local point...
+#pragma omp parallel for reduction(+ : local_changes) schedule(static)
         for (int i = 0; i < local_lines; i++)
         {
             int class = 1;
@@ -474,8 +474,8 @@ int main(int argc, char *argv[])
         zeroIntArray(pointsPerClass, K);           // Reset cluster counts
         zeroFloatMatriz(auxCentroids, K, samples); // Reset centroid accumulator
 
-        // Sum the coordinate of all local points
-        #pragma omp parallel for reduction(+:pointsPerClass[0:K], auxCentroids[0:K*samples]) schedule(static)
+// Sum the coordinate of all local points
+#pragma omp parallel for reduction(+ : pointsPerClass[0 : K], auxCentroids[0 : K * samples]) schedule(static)
         for (int i = 0; i < local_lines; i++)
         {
             int class = local_classMap[i];
@@ -499,8 +499,8 @@ int main(int argc, char *argv[])
 
         float local_maxDist = 0.0f;
 
-        // For each local centroid handled by this process...
-        #pragma omp parallel for reduction(max:local_maxDist) schedule(static)
+// For each local centroid handled by this process...
+#pragma omp parallel for reduction(max : local_maxDist) schedule(static)
         for (int i = 0; i < local_k; i++)
         {
             // Calculate the global index of the centroid, used for querying the global centroids table
