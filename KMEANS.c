@@ -172,10 +172,10 @@ float euclideanDistance(float *point, float *center, int samples)
 	float dist=0.0;
 	for(int i=0; i<samples; i++) 
 	{
-		dist+= (point[i]-center[i])*(point[i]-center[i]);
+		// dist+= (point[i]-center[i])*(point[i]-center[i]);
+		dist = fmaf(point[i]-center[i], point[i]-center[i], dist);
 	}
-	dist = sqrt(dist);
-	return(dist);
+	return dist; // Squared distance
 }
 
 /*
@@ -184,10 +184,7 @@ This function could be modified
 */
 void zeroFloatMatriz(float *matrix, int rows, int columns)
 {
-	int i,j;
-	for (i=0; i<rows; i++)
-		for (j=0; j<columns; j++)
-			matrix[i*columns+j] = 0.0;	
+	memset(matrix, 0, rows * columns * sizeof(float));
 }
 
 /*
@@ -196,12 +193,8 @@ This function could be modified
 */
 void zeroIntArray(int *array, int size)
 {
-	int i;
-	for (i=0; i<size; i++)
-		array[i] = 0;	
+	memset(array, 0, size * sizeof(int));
 }
-
-
 
 int main(int argc, char* argv[])
 {
@@ -384,7 +377,7 @@ int main(int argc, char* argv[])
 		sprintf(line,"\n[%d] Cluster changes: %d\tMax. centroid distance: %f", it, changes, maxDist);
 		outputMsg = strcat(outputMsg,line);
 
-	} while((changes>minChanges) && (it<maxIterations) && (maxDist>maxThreshold));
+	} while((changes>minChanges) && (it<maxIterations) && (maxDist>pow(maxThreshold, 2)));
 
 /*
  *
