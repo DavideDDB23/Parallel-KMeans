@@ -518,7 +518,7 @@ int main(int argc, char *argv[])
 		// Wait if the non-blocking reduction didn't complete
 		MPI_Wait(&MPI_REQUEST, MPI_STATUS_IGNORE);
 
-	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > maxThreshold*maxThreshold));
+	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > pow(maxThreshold, 2)));
 
 	// Prepare to gather the class assignments from all processes
 	int *recvcounts = (int *)malloc(size * sizeof(int));
