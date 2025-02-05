@@ -9,7 +9,7 @@ declare -a times
 # Loop over the desired number of runs
 for i in $(seq 1 $num_runs); do
   echo "==============================="
-  echo "Submitting job $i/$num_runs..."
+  echo "Submitting seq job $i/$num_runs..."
   
   # Submit the Condor job
   submit_output=$(condor_submit job_seq.sub 2>&1)

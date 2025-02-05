@@ -9,10 +9,10 @@ declare -a times
 # For loop to run the job N times
 for i in $(seq 1 $num_runs); do
   echo "================================="
-  echo "Submitting MPI job $i/$num_runs..."
+  echo "Submitting OMP+MPI job $i/$num_runs..."
   
   # Submit the Condor job
-  submit_output=$(condor_submit job_mpi.sub 2>&1)
+  submit_output=$(condor_submit job_mpi_omp.sub 2>&1)
   rc=$?
   
   if [ $rc -ne 0 ]; then
