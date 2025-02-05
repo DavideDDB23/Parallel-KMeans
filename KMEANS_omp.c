@@ -428,26 +428,32 @@ int main(int argc, char *argv[])
 		*	}
 		*/
 
-#pragma omp parallel for // valuta se levare parallel o usare collapse
+		// Initialize maxDist
+		maxDist = 0.0f;
+
+#pragma omp parallel for reduction(max : maxDist)
 		for (int i = 0; i < K; i++)
 		{
+			// 1) Normalize auxCentroids for this class
 			for (int j = 0; j < samples; j++)
 			{
 				auxCentroids[i * samples + j] /= pointsPerClass[i];
 			}
-		}
 
-		maxDist = 0.0f;
-#pragma omp parallel for reduction(max : maxDist)
-		for (int i = 0; i < K; i++)
-		{
-			distCentroids[i] = euclideanDistance(&centroids[i * samples], &auxCentroids[i * samples], samples);
+			// 2) Compute distance and update distCentroids
+			distCentroids[i] = euclideanDistance(
+				&centroids[i * samples],
+				&auxCentroids[i * samples],
+				samples);
+
+			// 3) Track maximum distance
 			if (distCentroids[i] > maxDist)
 			{
 				maxDist = distCentroids[i];
 			}
 		}
-		memcpy(centroids, auxCentroids, (K * samples * sizeof(float)));
+
+		memcpy(centroids, auxCentroids, K * samples * sizeof(float));
 
 	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > pow(maxThreshold, 2)));
 
