@@ -2,7 +2,7 @@ universe = parallel
 
 executable = openmpiscript.sh
 
-arguments = ./KMEANS_mpi.out -np 4 ./KMEANS_mpi.out /home/deblasio_2082600/Parallel-KMeans/test_files/input100D2.inp 15 5000 1 0.0001 out100D2mpi.txt
+arguments = ./KMEANS_mpi.out /home/deblasio_2082600/Parallel-KMeans/test_files/input100D2.inp 15 5000 1 0.0001 out100D2mpi.txt
 
 should_transfer_files = YES
 
