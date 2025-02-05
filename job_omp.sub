@@ -1,0 +1,15 @@
+universe = vanilla
+
+executable = ./KMEANS_omp.out
+
+arguments = test_files/input100D2.inp 15 5000 1 0.0001 out100D2omp.txt
+
+output = logs/out.$(NODE)
+error = logs/err.$(NODE)
+log = logs/log
+
+request_cpus = 1
+
+getenv = True
+
+queue
