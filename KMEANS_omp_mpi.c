@@ -241,9 +241,12 @@ int main(int argc, char *argv[])
      * */
     if ((argc != 7) && (argc != 8))
     {
-        fprintf(stderr, "EXECUTION ERROR K-MEANS: Parameters are not correct.\n");
-        fprintf(stderr, "./KMEANS [Input Filename] [Number of clusters] [Number of iterations] [Number of changes] [Threshold] [Output data file]\n");
-        fflush(stderr);
+        if (rank == 0)
+        {
+            fprintf(stderr, "EXECUTION ERROR K-MEANS: Parameters are not correct.\n");
+            fprintf(stderr, "./KMEANS [Input Filename] [Number of clusters] [Number of iterations] [Number of changes] [Threshold] [Output data file]\n");
+            fflush(stderr);
+        }
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
@@ -521,10 +524,10 @@ int main(int argc, char *argv[])
             }
 
             // Update the local maximum distance if necessary, for later convergence check
-            if (distance > local_maxDist)
-            {
-                local_maxDist = distance;
-            }
+			if (distance > local_maxDist)
+			{
+				local_maxDist = distance;
+			}
         }
 
         // Reduce to find the maximum distance across all processes
@@ -538,7 +541,7 @@ int main(int argc, char *argv[])
         // Wait if the non-blocking reduction didn't complete
         MPI_Wait(&MPI_REQUEST, MPI_STATUS_IGNORE);
 
-    } while ((changes > minChanges) && (it < maxIterations) && (maxDist > maxThreshold * maxThreshold));
+    } while ((changes > minChanges) && (it < maxIterations) && (maxDist > pow(maxThreshold, 2)));
 
     // Prepare to gather the class assignments from all processes
     int *recvcounts = (int *)malloc(size * sizeof(int));
