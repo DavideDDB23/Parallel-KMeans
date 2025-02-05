@@ -9,38 +9,51 @@
 #
 
 # Compilers
-CC=gcc-14
-OMPFLAG=-fopenmp
-MPICC=mpicc
-CUDACC=nvcc
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S), Darwin)
+    CC = gcc-14
+    OMPFLAG = -fopenmp
+    MPICC = mpicc
+    CUDACC = nvcc
+    PLATFORM_FLAGS = -isysroot $(shell xcrun --show-sdk-path)
+else
+    CC = gcc -mavx2
+    OMPFLAG = -fopenmp -ffp-contract=off -fno-associative-math -fno-fast-math -ffloat-store
+    MPICC = mpicc
+    CUDACC = nvcc
+	CUDAFLAGS=--generate-line-info -arch=sm_75
+    PLATFORM_FLAGS = -fno-omit-frame-pointer -mfma
+endif
 
 # Flags for optimization and libs
-FLAGS = -O3 -Wall -isysroot $(shell xcrun --show-sdk-path)
-LIBS=-lm
+FLAGS = -O3 -Wall -g $(PLATFORM_FLAGS)
+LIBS = -lm
 
 # Targets to build
-OBJS=KMEANS_seq KMEANS_omp KMEANS_mpi KMEANS_cuda KMEANS_omp_mpi
+OBJS=KMEANS_seq.out KMEANS_omp.out KMEANS_mpi.out KMEANS_cuda.out KMEANS_omp_mpi.out
 
 # Rules. By default show help
 help:
 	@echo
 	@echo "K-means clustering method"
-	@echo
 	@echo "Group Trasgo, Universidad de Valladolid (Spain)"
 	@echo
-	@echo "make KMEANS_seq	Build only the sequential version"
-	@echo "make cKMEANS_omp	Build only the OpenMP version"
-	@echo "make KMEANS_mpi	Build only the MPI version"
-	@echo "make KMEANS_cuda	Build only the CUDA version"
-	@echo "make KMEANS_omp_mpi	Build the MPI+OMP version"
+	@echo "make KMEANS_seq         Build only the sequential version"
+	@echo "make KMEANS_omp         Build only the OpenMP version"
+	@echo "make KMEANS_mpi         Build only the MPI version"
+	@echo "make KMEANS_cuda        Build only the CUDA version"
+	@echo "make KMEANS_omp_mpi     Build the MPI+OMP version"
 	@echo
-	@echo "make all	Build all versions (Sequential, OpenMP)"
-	@echo "make debug	Build all version with demo output for small surfaces"
-	@echo "make clean	Remove targets"
+	@echo "make all                Build all versions (Sequential, OpenMP, etc.)"
+	@echo "make debug              Build all versions with demo output for small surfaces"
+	@echo "make clean              Remove targets"
 	@echo
 
+# Build all versions
 all: $(OBJS)
 
+# Target rules
 KMEANS_seq: KMEANS.c
 	$(CC) $(FLAGS) $(DEBUG) $< $(LIBS) -o $@.out
 
@@ -55,11 +68,8 @@ KMEANS_cuda: KMEANS_cuda.cu
 
 KMEANS_omp_mpi: KMEANS_omp_mpi.c
 	$(MPICC) $(FLAGS) $(DEBUG) $(OMPFLAG) $< $(LIBS) -o $@.out
-	
-KMEANS_mpi_pthreads: KMEANS_mpi_pthreads.c
-	$(MPICC) $(FLAGS) $(DEBUG) $< $(LIBS) -o $@.out
 
-# Remove the target files
+# Clean command
 clean:
 	rm -rf $(OBJS)
 
