@@ -3,16 +3,16 @@
 # Prompt the user for the number of runs
 read -p "Enter the number of runs: " num_runs
 
-# Array to hold each run's time
+# Array to store each run's time
 declare -a times
 
-# Loop over the desired number of runs
+# For loop to run the job N times
 for i in $(seq 1 $num_runs); do
-  echo "==============================="
-  echo "Submitting job $i/$num_runs..."
+  echo "================================="
+  echo "Submitting MPI job $i/$num_runs..."
   
   # Submit the Condor job
-  submit_output=$(condor_submit job_seq.sub 2>&1)
+  submit_output=$(condor_submit job_mpi.sub 2>&1)
   rc=$?
   
   if [ $rc -ne 0 ]; then
@@ -22,9 +22,9 @@ for i in $(seq 1 $num_runs); do
     break
   fi
   
-  # -------------------------------------------------------------------
+  #------------------------------------------------------------
   # Extract the ClusterId from the condor_submit output
-  # -------------------------------------------------------------------
+  #------------------------------------------------------------
   cluster_id=$(echo "$submit_output" | sed -n 's/.*submitted to cluster \([0-9]\+\).*/\1/p')
   
   if [ -z "$cluster_id" ]; then
@@ -32,28 +32,25 @@ for i in $(seq 1 $num_runs); do
     break
   fi
   
-  # -------------------------------------------------------------------
+  #------------------------------------------------------------
   # Wait for this specific cluster to complete
-  # -------------------------------------------------------------------
+  #------------------------------------------------------------
   echo "Waiting for job (ClusterId $cluster_id) to complete..."
-  condor_wait logs/seq_log.
+  condor_wait logs/log_mpi. $cluster_id
   
-  # -------------------------------------------------------------------
-  # Parse the output file for the time.
-  # -------------------------------------------------------------------
-  output_file="logs/out_seq."
+  #------------------------------------------------------------
+  # Parse the output file for the time
+  #------------------------------------------------------------
+  output_file="logs/out_mpi.0"
   
-  # Ensure the output file exists
   if [ ! -f "$output_file" ]; then
     echo "Output file '$output_file' not found; cannot parse computation time."
     break
   fi
   
-  # -------------------------------------------------------------------
-  # Extract the "Computation: XX.XXXXXX seconds" line
-  # The line looks like:   Computation: 12.132704 seconds
-  # We can parse out the second field (which is the numeric value).
-  # -------------------------------------------------------------------
+  #------------------------------------------------------------
+  # Extract the line "Computation: XX.XXXX seconds"
+  #------------------------------------------------------------
   time_value=$(grep "Computation:" "$output_file" | awk '{print $2}')
   
   # Check if time_value is a valid decimal number
@@ -63,12 +60,11 @@ for i in $(seq 1 $num_runs); do
   else
     echo "Could not parse a valid computation time from '$output_file' for run $i."
   fi
-
 done
 
-# -------------------------------------------------------------------
-# Now compute the average from the collected times
-# -------------------------------------------------------------------
+#------------------------------------------------------------
+# Compute the average from the collected times
+#------------------------------------------------------------
 count=0
 sum=0
 for i in "${!times[@]}"; do
@@ -76,17 +72,16 @@ for i in "${!times[@]}"; do
   count=$((count + 1))
 done
 
-# Print out each run's time and the final average
 if [ $count -gt 0 ]; then
   echo "========================================="
-  echo "Computation times for each run:"
+  echo "Computation times for each of the $count run(s):"
   for i in "${!times[@]}"; do
     echo "  Run $i: ${times[$i]} seconds"
   done
   avg=$(echo "scale=4; $sum / $count" | bc -l)
   echo
-  echo "Average computation time over $count run(s): $avg seconds"
+  echo "Average computation time: $avg seconds"
   echo "========================================="
 else
-  echo "No successful runs or no valid computation times were collected."
+  echo "No valid computation times were collected."
 fi
