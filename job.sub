@@ -1,17 +1,14 @@
-universe                = parallel
+universe = vanilla
 
-executable              = /home/deblasio_2082600/Parallel-KMeans/openmpiscript.sh
-arguments               = /home/deblasio_2082600/Parallel-KMeans/KMEANS_mpi.out /home/deblasio_2082600/Parallel-KMeans/test_files/input100D2.inp 15 5000 1 0.0001 out100D2mpi.txt
+# Where should the output/error be saved
+log = logs/cuda_job.log
+output = logs/cuda_job.out
+error = logs/cuda_job.err
 
-getenv                  = true
+# Request GPU resources
+request_gpus = 1
 
-log                     = logs/job.log
-output                  = logs/job.out
-error                   = logs/job.err
-
-machine_count           = 16
-
-should_transfer_files   = yes
-when_to_transfer_output = on_exit
+# Specify any environment setup if needed
+getenv = True
 
 queue
