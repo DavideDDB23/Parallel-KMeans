@@ -1,14 +1,15 @@
 universe = vanilla
 
-# Where should the output/error be saved
+executable = ./KMEANS_cuda.out
+
+arguments = test_files/input100D2.inp 15 5000 1 0.0001 out100D2cuda.txt
+
 log = logs/cuda_job.log
 output = logs/cuda_job.out
 error = logs/cuda_job.err
 
-# Request GPU resources
 request_gpus = 1
 
-# Specify any environment setup if needed
 getenv = True
 
 queue
