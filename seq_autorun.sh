@@ -19,8 +19,7 @@ for i in $(seq 1 $num_runs); do
     echo "condor_submit failed (exit code $rc)."
     echo "Output from condor_submit:"
     echo "$submit_output"
-    # If submission fails, skip to the next iteration or break, as you prefer
-    continue
+    break
   fi
   
   # -------------------------------------------------------------------
