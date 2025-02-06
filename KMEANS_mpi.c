@@ -325,7 +325,7 @@ int main(int argc, char *argv[])
 	fflush(stdout);
 	//**************************************************
 	// START CLOCK***************************************
-	MPI_Barrier(MPI_COMM_WORLD); // Ensure that all processes start timer at the same time
+	MPI_Barrier(MPI_COMM_WORLD); // Ensure that all processes start timer at the same time.
 	start = MPI_Wtime();
 	//**************************************************
 
@@ -340,8 +340,8 @@ int main(int argc, char *argv[])
 	int changes;
 	float maxDist;
 
-	// pointPerClass: number of points classified in each class
-	// auxCentroids: mean of the points in each class
+	// pointPerClass: number of points classified in each class.
+	// auxCentroids: mean of the points in each class.
 	int *pointsPerClass = (int *)malloc(K * sizeof(int));
 	float *auxCentroids = (float *)malloc(K * samples * sizeof(float));
 	if (pointsPerClass == NULL || auxCentroids == NULL)
@@ -352,24 +352,24 @@ int main(int argc, char *argv[])
 
 	//  VALUES NEEDED FOR STEP 1: Distribute data points among processes, Works also with odd number of points / processes.
 	int *sendcounts = (int *)malloc(size * sizeof(int)); // Array that stores how many data points each process will receive.
-	// Since there are 'size' processes, sendcounts needs an entry for each process, resulting in an array of size 'size'.
 	int *displs = (int *)malloc(size * sizeof(int)); // Array that store the starting index (offset) of each process’s portion in the main data array.
+	// sendcounts and displsa have size 'size', since there are size processes, each array contains an entry for each process.
 
 	int remainder = lines % size;
-	int sum = 0; // To calculate the starting position (displacement) for each process’s data.
+	int sum = 0; // To calculate the starting position for each process’s data.
 	for (int i = 0; i < size; ++i)
 	{
 		sendcounts[i] = (lines / size) * samples; // Every process receive at least (lines / size) data points.
 		if (i < remainder)						  // Ensures that only the exact number of extra points (remainder) is distributed.
-			sendcounts[i] += samples;			  // Give extra point (remainder), per esempio se ci sono 3 remainder, i processi 0,1,2 ricevono un data point in piu ognuno.
+			sendcounts[i] += samples;			  // Give extra point (remainder), for example if there're 3 remainders, processes 0,1,2 receive one data point each.
 		displs[i] = sum;						  // Store the starting index of this process’s data portion in the displs array. The first process starts at 0, and the next process starts where the previous process’s data ended.
 		sum += sendcounts[i];					  // Update the sum variable by adding the number of elements assigned to this process, so next process displs is correctly calculated.
 	}
 
-	// Calculate the number of local lines (data points) for each process
+	// Calculate the number of local lines (data points) for each process.
 	int local_lines = sendcounts[rank] / samples;
-	// Allocate memory for local data points and their class assignments
-	float *local_data = (float *)calloc(local_lines * samples, sizeof(float)); // Stores the portion of data points assigned to the process
+	// Allocate memory for local data points and their class assignments.
+	float *local_data = (float *)calloc(local_lines * samples, sizeof(float)); // Stores the portion of data points assigned to the process.
 	int *local_classMap = (int *)calloc(local_lines, sizeof(int));			   // Stores the class assignments for the data points.
 	if (local_data == NULL || local_classMap == NULL)
 	{
@@ -381,12 +381,12 @@ int main(int argc, char *argv[])
 	// MPI_Scatterv allows varying counts of data to be sent to each process
 	MPI_Scatterv(data, sendcounts, displs, MPI_FLOAT, local_data, sendcounts[rank], MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-	//  VALUES NEEDED FOR STEP 2: Distribute centroids update mong processes
+	//  VALUES NEEDED FOR STEP 2: Distribute centroids update among processes
 	int *centroid_sendcounts = (int *)malloc(size * sizeof(int)); // Array that stores how many centroids each process will handle.
 	int *centroid_displs = (int *)malloc(size * sizeof(int));	  // Array that store the starting index (offset) in the centroid array for each process.
 
 	int centroid_remainder = K % size;
-	sum = 0; // To calculate the starting position (displacement) for each process’s centroids.
+	sum = 0; // To calculate the starting position for each process’s centroids.
 	for (int i = 0; i < size; ++i)
 	{
 		centroid_sendcounts[i] = (K / size) * samples; // Every process receive at least (K / size) centroids.
@@ -457,9 +457,9 @@ int main(int argc, char *argv[])
 		 *    STEP 2: Recalculate centroids (cluster means)
 		 ------------------------------------------------------------------- */
 
-		// Initialize pointsPerClass and the centroid auxiliary tables
-		zeroIntArray(pointsPerClass, K);		   // Reset cluster counts
-		zeroFloatMatriz(auxCentroids, K, samples); // Reset centroid accumulator
+		// Initialize pointsPerClass and auxCentroids
+		zeroIntArray(pointsPerClass, K);		   // Reset cluster counts (number of points in the class)
+		zeroFloatMatriz(auxCentroids, K, samples); // Reset centroid accumulator (mean of points in the class)
 
 		// Sum the coordinate of all local points
 		for (int i = 0; i < local_lines; i++)
@@ -472,9 +472,9 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		// All the processes receive the other pointsPerClass and auxiliary centroids
-		// Reduce all pointsPerClass and auxCentroids across all processes
-		// MPI_Allreduce sums up the pointsPerClass and auxCentroids from all processes
+		// All the processes receive the other pointsPerClass and auxCentroids
+		// MPI_Allreduce sums up the pointsPerClass and auxCentroids from all processes and distributes result to all, 
+		// MPI_IN_PLACE so each process’s local data is updated with the result of the reduction.
 		MPI_Allreduce(MPI_IN_PLACE, pointsPerClass, K, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
 		MPI_Allreduce(MPI_IN_PLACE, auxCentroids, K * samples, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 
@@ -489,7 +489,16 @@ int main(int argc, char *argv[])
 		for (int i = 0; i < local_k; i++)
 		{
 			// Calculate the global index of the centroid, used for querying the global centroids table
+			// Index of centroid is calculated as: 
+			// - Starting position of portion of centroids for the process (centroid_displs[rank])
+			//   divided by the number of dimensions per centroid (samples), which gives the starting
+			//   centroid index for this process.
+			// - The current local index (i) is then added to obtain the global index of the centroid.
 			int global_idx = centroid_displs[rank] / samples + i;
+
+			// Check if the centroid has no assigned points
+			if (pointsPerClass[global_idx] == 0)
+				continue;
 
 			float distance = 0.0f;
 
@@ -498,7 +507,7 @@ int main(int argc, char *argv[])
 			{
 				// Compute the new centroid value by averaging the coordinates
 				float centroid_val = auxCentroids[global_idx * samples + j] / pointsPerClass[global_idx];
-				// Compute the difference with the previous value
+        		// Compute the squared difference between the previous centroid coordinate and the new value.
 				distance = fmaf(centroids[global_idx * samples + j] - centroid_val, centroids[global_idx * samples + j] - centroid_val, distance);
 				// Update the local centroid with the new value (coordinate)
 				local_centroids[i * samples + j] = centroid_val;
@@ -512,9 +521,11 @@ int main(int argc, char *argv[])
 		}
 
 		// Reduce to find the maximum distance across all processes
+		// This ensures all process receives the largest maxDist found
 		MPI_Allreduce(&local_maxDist, &maxDist, 1, MPI_FLOAT, MPI_MAX, MPI_COMM_WORLD);
 
 		// Gather all local centroids into the global centroids array
+		// This ensures all processes have updated centroids for the next iteration
 		MPI_Allgatherv(local_centroids, local_k * samples, MPI_FLOAT, centroids, centroid_sendcounts, centroid_displs, MPI_FLOAT, MPI_COMM_WORLD);
 		// MPI_Allgatherv gathers variable amounts of data from all processes and distributes
 		// the combined data to all processes. This updates the centroids for the next iteration.
