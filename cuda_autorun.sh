@@ -63,24 +63,41 @@ for i in $(seq 1 $num_runs); do
 done
 
 #------------------------------------------------------------
-# Compute the average from the collected times
+# Compute the average and standard deviation
 #------------------------------------------------------------
 count=0
 sum=0
+
+# Calculate sum of times
 for i in "${!times[@]}"; do
   sum=$(echo "$sum + ${times[$i]}" | bc -l)
   count=$((count + 1))
 done
 
+# Calculate the average
 if [ $count -gt 0 ]; then
+  avg=$(echo "scale=4; $sum / $count" | bc -l)
+
+  # Calculate variance
+  sum_squared_diff=0
+  for i in "${!times[@]}"; do
+    diff=$(echo "${times[$i]} - $avg" | bc -l)
+    squared_diff=$(echo "$diff * $diff" | bc -l)
+    sum_squared_diff=$(echo "$sum_squared_diff + $squared_diff" | bc -l)
+  done
+
+  variance=$(echo "scale=4; $sum_squared_diff / $count" | bc -l)
+  std_dev=$(echo "scale=4; sqrt($variance)" | bc -l)
+
+  # Display results
   echo "========================================="
   echo "Computation times for each of the $count run(s):"
   for i in "${!times[@]}"; do
     echo "  Run $i: ${times[$i]} seconds"
   done
-  avg=$(echo "scale=4; $sum / $count" | bc -l)
   echo
   echo "Average computation time: $avg seconds"
+  echo "Standard deviation: $std_dev seconds"
   echo "========================================="
 else
   echo "No valid computation times were collected."
