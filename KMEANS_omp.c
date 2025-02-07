@@ -369,15 +369,13 @@ int main(int argc, char *argv[])
 			 ------------------------------------------------------------------- */
 
 #pragma omp for schedule(static)
-			// Reset pointsPerClass
-			for (int i = 0; i < K; i++)
-			{
-				pointsPerClass[i * PADDING] = 0;
-			}
-#pragma omp for schedule(static)
-			// Reset auxCentroids
+			// Reset pointsPerClass and auxCentroids in a single loop
 			for (int i = 0; i < K * samples; i++)
 			{
+				if (i < K)
+				{
+					pointsPerClass[i * PADDING] = 0;
+				}
 				auxCentroids[i] = 0.0f;
 			}
 
