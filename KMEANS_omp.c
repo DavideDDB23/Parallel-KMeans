@@ -30,6 +30,9 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
+// We choose 16 so that each cluster counter is 16 ints = 64 bytes apart
+#define PADDING 16
+
 /*
 Function showFileError: It displays the corresponding error during file reading.
 */
@@ -179,31 +182,13 @@ float euclideanDistance(float *point, float *center, int samples)
 	return dist; // Squared distance
 }
 
-/*
-Function zeroFloatMatriz: Set matrix elements to 0
-This function could be modified
-*/
-void zeroFloatMatriz(float *matrix, int rows, int columns)
-{
-	memset(matrix, 0, rows * columns * sizeof(float));
-}
-
-/*
-Function zeroIntArray: Set array elements to 0
-This function could be modified
-*/
-void zeroIntArray(int *array, int size)
-{
-	memset(array, 0, size * sizeof(int));
-}
-
 int main(int argc, char *argv[])
 {
-
 	// START CLOCK***************************************
 	double start, end;
 	start = omp_get_wtime();
 	//**************************************************
+
 	/*
 	 * PARAMETERS
 	 *
@@ -242,7 +227,7 @@ int main(int argc, char *argv[])
 	float *data = (float *)calloc(lines * samples, sizeof(float));
 	if (data == NULL)
 	{
-		fprintf(stderr, "Memory allocation error.\n");
+		fprintf(stderr, "Memory allocation error (data).\n");
 		exit(-4);
 	}
 	error = readInput2(argv[1], data);
@@ -270,13 +255,36 @@ int main(int argc, char *argv[])
 
 	// Initial centrodis
 	srand(0);
-	int i;
-	for (i = 0; i < K; i++)
+	for (int i = 0; i < K; i++)
 		centroidPos[i] = rand() % lines;
 
 	// Loading the array of initial centroids with the data from the array data
 	// The centroids are points stored in the data array.
 	initCentroids(data, centroids, centroidPos, samples, K);
+	free(centroidPos);
+
+	// Aligned/padded arrays to reduce false sharing
+	// We'll do a normal array reduction on them (size = K*PADDING, K*samples)
+	int *pointsPerClass = NULL;
+	float *auxCentroids = NULL;
+	if (posix_memalign((void **)&pointsPerClass, 64, sizeof(int) * K * PADDING) != 0)
+	{
+		fprintf(stderr, "posix_memalign for pointsPerClass failed.\n");
+		exit(-4);
+	}
+	if (posix_memalign((void **)&auxCentroids, 64, sizeof(float) * K * samples) != 0)
+	{
+		fprintf(stderr, "posix_memalign for auxCentroids failed.\n");
+		exit(-4);
+	}
+
+	// Set the number of OpenMP threads
+	int nThreads = 4;
+	if (argc == 8)
+	{
+		nThreads = atoi(argv[7]);
+	}
+	omp_set_num_threads(nThreads);
 
 	printf("\n\tData file: %s \n\tPoints: %d\n\tDimensions: %d\n", argv[1], lines, samples);
 	printf("\tNumber of clusters: %d\n", K);
@@ -296,166 +304,135 @@ int main(int argc, char *argv[])
 
 	int it = 0;
 	int changes = 0;
-	float maxDist;
+	float maxDist = 0.0f;
+	int terminate = 0; // boolean to control the loop
 
-	// pointPerClass: number of points classified in each class
-	// auxCentroids: mean of the points in each class
-	int *pointsPerClass = (int *)malloc(K * sizeof(int));
-	float *auxCentroids = (float *)malloc(K * samples * sizeof(float));
-	float *distCentroids = (float *)malloc(K * sizeof(float));
-	if (pointsPerClass == NULL || auxCentroids == NULL || distCentroids == NULL)
+	// Start the parallel region
+#pragma omp parallel default(none)                                         \
+	firstprivate(lines, samples, K)                                        \
+	shared(data, centroids, auxCentroids, classMap, pointsPerClass,        \
+			   it, changes, maxDist, terminate, minChanges, maxIterations, \
+			   maxThreshold)
 	{
-		fprintf(stderr, "Memory allocation error.\n");
-		exit(-4);
-	}
-
-	// Set the number of OpenMP threads
-	int threads = 8;
-	if (argc == 8)
-	{
-		threads = atoi(argv[7]); // Set thread count from command-line argument
-	}
-	omp_set_num_threads(threads); // Configure OpenMP thread pool
-
-	do
-	{
-		it++; // Increment iteration counter
-
-		/* -------------------------------------------------------------------
-		 *  STEP 1: Assign points to nearest centroid
-		 *	Calculate the distance from each point to the centroid
-		 *	Assign each point to the nearest centroid.
-		 ------------------------------------------------------------------- */
-
-		changes = 0; // counter for changes in cluster assignments
-
-// Parallelize the loop to assign each data point to the nearest centroid
-#pragma omp parallel for reduction(+ : changes)
-		for (int i = 0; i < lines; i++)
+		while (1)
 		{
-			int class = 1;
-			float minDist = FLT_MAX;
-
-			// For each centroid...
-			for (int j = 0; j < K; j++)
+			// Barrier so all threads see if 'terminate' was set at the end of the previous iteration.
+#pragma omp barrier
+			if (terminate)
 			{
-				// Compute l_2 (squared, without sqrt)
-				float dist = euclideanDistance(&data[i * samples], &centroids[j * samples], samples);
+				break; // all threads exit the while loop
+			}
 
-				// If the distance is smallest so far, update minDist and the class of the point
-				if (dist < minDist)
+			/* -------------------------------------------------------------------
+			*  STEP 1: Assign points to nearest centroid
+			*	Calculate the distance from each point to the centroid
+			*	Assign each point to the nearest centroid.
+			------------------------------------------------------------------- */
+#pragma omp single
+			{
+				it++;		 // Increment iteration counter
+				changes = 0; // counter for changes in cluster assignments
+			}
+#pragma omp for reduction(+ : changes) schedule(static)
+			// For each point...
+			for (int i = 0; i < lines; i++)
+			{
+				int class = 1;
+				float minDist = FLT_MAX;
+
+				// For each centroid...
+				for (int j = 0; j < K; j++)
 				{
-					minDist = dist;
-					class = j + 1;
+					// Compute l_2 (squared, without sqrt)
+					float dist = euclideanDistance(&data[i * samples], &centroids[j * samples], samples);
+
+					// If the distance is smallest so far, update minDist and the class of the point
+					if (dist < minDist)
+					{
+						minDist = dist;
+						class = j + 1;
+					}
+				}
+
+				// If the class changed, increment the local change counter
+				if (classMap[i] != class)
+				{
+					changes++;
+				}
+
+				// Assign the new class to the point
+				classMap[i] = class;
+			}
+
+			/* -------------------------------------------------------------------
+			 *    STEP 2: Recalculate centroids (cluster means)
+			 ------------------------------------------------------------------- */
+
+#pragma omp for schedule(static)
+			// Reset pointsPerClass
+			for (int i = 0; i < K; i++)
+			{
+				pointsPerClass[i * PADDING] = 0;
+			}
+#pragma omp for schedule(static)
+			// Reset auxCentroids
+			for (int i = 0; i < K * samples; i++)
+			{
+				auxCentroids[i] = 0.0f;
+			}
+
+#pragma omp for schedule(static) \
+	reduction(+ : pointsPerClass[ : (K * PADDING)], auxCentroids[ : (K * samples)])
+			for (int i = 0; i < lines; i++)
+			{
+				int class = classMap[i] - 1;
+				pointsPerClass[class * PADDING]++;
+
+				for (int j = 0; j < samples; j++)
+				{
+					auxCentroids[class * samples + j] += data[i * samples + j];
 				}
 			}
 
-			// If the class changed, increment the local change counter
-			if (classMap[i] != class)
+			/* -------------------------------------------------------------------
+			*  STEP 3: Check convergence
+			*  Compute the maximum distance between old and new centroids
+			 ------------------------------------------------------------------- */
+#pragma omp single
 			{
-				changes++;
-			}
-			// Assign the new class to the point
-			classMap[i] = class;
-		}
-
-		/* -------------------------------------------------------------------
-		 *    STEP 2: Recalculate centroids (cluster means)
-		 ------------------------------------------------------------------- */
-
-		// Initialize pointsPerClass and the centroid auxiliary tables
-		zeroIntArray(pointsPerClass, K);		   // Reset cluster counts
-		zeroFloatMatriz(auxCentroids, K, samples); // Reset centroid accumulator
-
-#pragma omp parallel for reduction(+ : pointsPerClass[ : K], auxCentroids[ : K * samples])
-		for (int i = 0; i < lines; i++)
-		{
-			int class = classMap[i] - 1;
-			pointsPerClass[class]++;
-
-			for (int j = 0; j < samples; j++)
-			{
-				auxCentroids[class * samples + j] += data[i * samples + j];
-			}
-		}
-
-		/* ALTERNATIVE APPROACH
-		*		#pragma omp parallel
-		*		{
-		*			// Allocate thread-local storage for points per class and auxiliary centroids
-		*			int *local_pointsPerClass = (int *)calloc(K, sizeof(int));
-		*			float *local_auxCentroids = (float *)calloc(K * samples, sizeof(float));
-		*
-		*			if (local_pointsPerClass == NULL || local_auxCentroids == NULL)
-		*			{
-		*				fprintf(stderr, "Memory allocation error.\n");
-		*				exit(-4);
-		*			}
-		*
-		*		// Distribute the loop iterations among threads
-		*		#pragma omp for
-		*		for (int i = 0; i < lines; i++)
-		*		{
-		*			// Determine the class for the current data point
-		*			int class = classMap[i];
-		*
-		*			// Increment the count for this class
-		*			local_pointsPerClass[class-1] += 1;
-		*
-		*			// Accumulate the data point's features into the corresponding centroid
-		*			for (int j = 0; j < samples; j++)
-		*			{
-		+				local_auxCentroids[(class - 1) * samples + j] += data[i * samples + j];
-		*			}
-		*		}
-		*
-		*		// Combine the thread-local results into the global arrays
-		*		#pragma omp critical
-		*		{
-		*			for (int k = 0; k < K; k++)
-		*			{
-		*				pointsPerClass[k] += local_pointsPerClass[k]; // Aggregate cluster counts
-		*				for (int j = 0; j < samples; j++)
-		*				{
-		*					auxCentroids[k * samples + j] += local_auxCentroids[k * samples + j];
-		*				}
-		*			}
-		*		}
-		*
-		*		// Free the thread-local storage
-		*		free(local_pointsPerClass);
-		*		free(local_auxCentroids);
-		*	}
-		*/
-
-		// Initialize maxDist
-		maxDist = 0.0f;
-
-#pragma omp parallel for reduction(max : maxDist)
-		for (int i = 0; i < K; i++)
-		{
-			// 1) Normalize auxCentroids for this class
-			for (int j = 0; j < samples; j++)
-			{
-				auxCentroids[i * samples + j] /= pointsPerClass[i];
+				maxDist = 0.0f;
 			}
 
-			// 2) Compute distance and update distCentroids
-			distCentroids[i] = euclideanDistance(
-				&centroids[i * samples],
-				&auxCentroids[i * samples],
-				samples);
-
-			// 3) Track maximum distance
-			if (distCentroids[i] > maxDist)
+#pragma omp for reduction(max : maxDist) schedule(static)
+			// For each centroid...
+			for (int i = 0; i < K; i++)
 			{
-				maxDist = distCentroids[i];
+				for (int j = 0; j < samples; j++)
+				{
+					auxCentroids[i * samples + j] /= (float)pointsPerClass[i * PADDING];
+				}
+
+				float dist = euclideanDistance(&centroids[i * samples],
+											   &auxCentroids[i * samples],
+											   samples);
+				if (dist > maxDist)
+				{
+					maxDist = dist;
+				}
+			}
+
+#pragma omp single
+			{
+				// Copy new centroids into the real centroids array -- Update centroids
+				memcpy(centroids, auxCentroids, sizeof(float) * K * samples);
+
+				if ((changes <= minChanges) || (it >= maxIterations) || (maxDist <= pow(maxThreshold, 2)))
+				{
+					terminate = 1;
+				}
 			}
 		}
-
-		memcpy(centroids, auxCentroids, K * samples * sizeof(float));
-
-	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > pow(maxThreshold, 2)));
+	}
 
 	// Output and termination conditions
 	printf("%s", outputMsg);
@@ -493,9 +470,7 @@ int main(int argc, char *argv[])
 	// Free memory
 	free(data);
 	free(classMap);
-	free(centroidPos);
 	free(centroids);
-	free(distCentroids);
 	free(pointsPerClass);
 	free(auxCentroids);
 

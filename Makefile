@@ -19,11 +19,11 @@ ifeq ($(UNAME_S), Darwin)
     PLATFORM_FLAGS = -isysroot $(shell xcrun --show-sdk-path)
 else
     CC = gcc -mavx2
-    OMPFLAG = -fopenmp -ffp-contract=off -fno-associative-math -fno-fast-math -ffloat-store
+    OMPFLAG = -fopenmp
     MPICC = mpicc
     CUDACC = nvcc
 	CUDAFLAGS=--generate-line-info -arch=sm_75
-    PLATFORM_FLAGS = -fno-omit-frame-pointer -mfma
+    PLATFORM_FLAGS = #-mfma
 endif
 
 # Flags for optimization and libs
