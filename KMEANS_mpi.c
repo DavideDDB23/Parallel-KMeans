@@ -129,7 +129,7 @@ int readInput2(char *filename, float *data)
 /*
 Function writeResult: It writes in the output file the cluster of each sample (point).
 */
-int writeResult(int *classMap, int lines, const char *filename)
+int writeResult(int *classMap, int lines, const char *filename) //aggiungi max_computation_time se usi file per runnare cluster
 {
 	FILE *fp;
 
@@ -139,7 +139,9 @@ int writeResult(int *classMap, int lines, const char *filename)
 		{
 			fprintf(fp, "%d\n", classMap[i]);
 		}
-		fclose(fp);
+		
+//		fprintf(fp, "Computation: %f seconds\n", max_computation_time);
+        fclose(fp);
 
 		return 0;
 	}
@@ -588,7 +590,7 @@ int main(int argc, char *argv[])
 			printf("\n\nTermination condition: Centroid update precision reached: %g [%g]", maxDist, maxThreshold);
 		}
 
-		int error = writeResult(classMap, lines, argv[6]);
+		int error = writeResult(classMap, lines, argv[6]); // Add max_computation_time if use on cluster
 		if (error != 0)
 		{
 			showFileError(error, argv[6]);

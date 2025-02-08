@@ -131,7 +131,7 @@ int readInput2(char *filename, float *data)
 /*
 Function writeResult: It writes in the output file the cluster of each sample (point).
 */
-int writeResult(int *classMap, int lines, const char *filename)
+int writeResult(int *classMap, int lines, const char *filename) // Aggiungi computationTime se usi file per runnare cluster
 {
 	FILE *fp;
 
@@ -141,6 +141,8 @@ int writeResult(int *classMap, int lines, const char *filename)
 		{
 			fprintf(fp, "%d\n", classMap[i]);
 		}
+
+//		fprintf(fp, "Computation: %f seconds\n", computationTime);
 		fclose(fp);
 
 		return 0;
@@ -405,17 +407,20 @@ int main(int argc, char *argv[])
 			// For each centroid...
 			for (int i = 0; i < K; i++)
 			{
-				for (int j = 0; j < samples; j++)
+				if (pointsPerClass[i * PADDING] != 0)
 				{
-					auxCentroids[i * samples + j] /= (float)pointsPerClass[i * PADDING];
-				}
+					for (int j = 0; j < samples; j++)
+					{
+						auxCentroids[i * samples + j] /= (float)pointsPerClass[i * PADDING];
+					}
 
-				float dist = euclideanDistance(&centroids[i * samples],
-											   &auxCentroids[i * samples],
-											   samples);
-				if (dist > maxDist)
-				{
-					maxDist = dist;
+					float dist = euclideanDistance(&centroids[i * samples],
+												   &auxCentroids[i * samples],
+												   samples);
+					if (dist > maxDist)
+					{
+						maxDist = dist;
+					}
 				}
 			}
 
@@ -437,6 +442,7 @@ int main(int argc, char *argv[])
 
 	// END CLOCK*****************************************
 	end = omp_get_wtime();
+//	float computationTime = end - start;
 	printf("\nComputation: %f seconds", end - start);
 	fflush(stdout);
 	//**************************************************
@@ -458,7 +464,7 @@ int main(int argc, char *argv[])
 	}
 
 	// Writing the classification of each point to the output file.
-	error = writeResult(classMap, lines, argv[6]);
+	error = writeResult(classMap, lines, argv[6]); // Add computationTime if use on cluster
 	if (error != 0)
 	{
 		showFileError(error, argv[6]);
