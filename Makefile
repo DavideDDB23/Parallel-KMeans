@@ -23,11 +23,10 @@ else
     MPICC = mpicc
     CUDACC = nvcc
 	CUDAFLAGS=--generate-line-info -arch=sm_75
-    PLATFORM_FLAGS = #-mfma
 endif
 
 # Flags for optimization and libs
-FLAGS = -O3 -Wall -g $(PLATFORM_FLAGS)
+FLAGS = -O3 -Wall -g
 LIBS = -lm
 
 # Targets to build
@@ -64,7 +63,7 @@ KMEANS_mpi: KMEANS_mpi.c
 	$(MPICC) $(FLAGS) $(DEBUG) $< $(LIBS) -o $@.out
 
 KMEANS_cuda: KMEANS_cuda.cu
-	$(CUDACC) $(DEBUG) $< $(LIBS) -o $@.out
+	$(CUDACC) $(DEBUG) $(CUDAFLAGS) $< $(LIBS) -o $@.out
 
 KMEANS_omp_mpi: KMEANS_omp_mpi.c
 	$(MPICC) $(FLAGS) $(DEBUG) $(OMPFLAG) $< $(LIBS) -o $@.out
