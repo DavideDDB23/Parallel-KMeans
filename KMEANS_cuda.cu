@@ -501,12 +501,13 @@ int main(int argc, char *argv[])
     // ------------------------------------------------------------
     // Main k-Means Iterative Loop (on the GPU)
     // ------------------------------------------------------------
+    float initial_max_distance = 0.0f;
     do
     {
         it++;
         // Reset accumulators on the GPU.
         CHECK_CUDA_CALL(cudaMemset(gpu_changes, 0, sizeof(int)));
-        CHECK_CUDA_CALL(cudaMemcpy(gpu_max_distance, 0, sizeof(float), cudaMemcpyHostToDevice));
+        CHECK_CUDA_CALL(cudaMemcpy(gpu_max_distance, &initial_max_distance, sizeof(float), cudaMemcpyHostToDevice));
         CHECK_CUDA_CALL(cudaMemset(gpu_aux_centroids, 0, centroids_size));
         CHECK_CUDA_CALL(cudaMemset(gpu_points_per_class, 0, K * sizeof(int)));
 
