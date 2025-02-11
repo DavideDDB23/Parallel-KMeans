@@ -129,7 +129,7 @@ int readInput2(char *filename, float *data)
 /*
 Function writeResult: It writes in the output file the cluster of each sample (point).
 */
-int writeResult(int *classMap, int lines, const char *filename) //aggiungi max_computation_time se usi file per runnare cluster
+int writeResult(int *classMap, int lines, const char *filename, double max_computation_time) //aggiungi max_computation_time se usi file per runnare cluster
 {
 	FILE *fp;
 
@@ -140,7 +140,7 @@ int writeResult(int *classMap, int lines, const char *filename) //aggiungi max_c
 			fprintf(fp, "%d\n", classMap[i]);
 		}
 		
-//		fprintf(fp, "Computation: %f seconds\n", max_computation_time);
+		fprintf(fp, "Computation: %f seconds\n", max_computation_time);
         fclose(fp);
 
 		return 0;
@@ -383,30 +383,6 @@ int main(int argc, char *argv[])
 	// MPI_Scatterv allows varying counts of data to be sent to each process
 	MPI_Scatterv(data, sendcounts, displs, MPI_FLOAT, local_data, sendcounts[rank], MPI_FLOAT, 0, MPI_COMM_WORLD);
 
-	//  VALUES NEEDED FOR STEP 2: Distribute centroids update among processes
-	int *centroid_sendcounts = (int *)malloc(size * sizeof(int)); // Array that stores how many centroids each process will handle.
-	int *centroid_displs = (int *)malloc(size * sizeof(int));	  // Array that store the starting index (offset) in the centroid array for each process.
-
-	int centroid_remainder = K % size;
-	sum = 0; // To calculate the starting position for each process’s centroids.
-	for (int i = 0; i < size; ++i)
-	{
-		centroid_sendcounts[i] = (K / size) * samples; // Every process receive at least (K / size) centroids.
-		if (i < centroid_remainder)					   // Ensures that only the exact number of extra centroids (remainder) is distributed.
-			centroid_sendcounts[i] += samples;		   // Distribute remainder centroids
-		centroid_displs[i] = sum;					   // Store the starting index of this process’s centroids in the displs array.
-		sum += centroid_sendcounts[i];				   // Update the sum variable by adding the number of centroids assigned to this process, so next process displs is correctly calculated.
-	}
-
-	int local_k = centroid_sendcounts[rank] / samples; // Number of centroids handled by this process.
-	// Allocate memory for local centroids.
-	float *local_centroids = (float *)calloc(local_k * samples, sizeof(float));
-	if (local_centroids == NULL)
-	{
-		fprintf(stderr, "Memory allocation error.\n");
-		MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-	}
-
 	do
 	{
 		it++; // Increment iteration counter
@@ -488,49 +464,24 @@ int main(int argc, char *argv[])
 		float local_maxDist = 0.0f;
 
 		// For each local centroid handled by this process...
-		for (int i = 0; i < local_k; i++)
+		for (int i = 0; i < K; i++)
 		{
-			// Calculate the global index of the centroid, used for querying the global centroids table
-			// Index of centroid is calculated as: 
-			// - Starting position of portion of centroids for the process (centroid_displs[rank])
-			//   divided by the number of dimensions per centroid (samples), which gives the starting
-			//   centroid index for this process.
-			// - The current local index (i) is then added to obtain the global index of the centroid.
-			int global_idx = centroid_displs[rank] / samples + i;
-
-			// Check if the centroid has no assigned points
-			if (pointsPerClass[global_idx] == 0)
-				continue;
-
-			float distance = 0.0f;
-
-			// For each dimension...
-			for (int j = 0; j < samples; j++)
-			{
-				// Compute the new centroid value by averaging the coordinates
-				float centroid_val = auxCentroids[global_idx * samples + j] / pointsPerClass[global_idx];
-        		// Compute the squared difference between the previous centroid coordinate and the new value.
-				distance = fmaf(centroids[global_idx * samples + j] - centroid_val, centroids[global_idx * samples + j] - centroid_val, distance);
-				// Update the local centroid with the new value (coordinate)
-				local_centroids[i * samples + j] = centroid_val;
-			}
-
-			// Update the local maximum distance if necessary, for later convergence check
-			if (distance > local_maxDist)
-			{
-				local_maxDist = distance;
-			}
+			if (pointsPerClass[i] > 0)
+            {
+                for (int j = 0; j < samples; j++)
+                {
+                    float oldVal = centroids[i * samples + j];
+                    float newVal = auxCentroids[i * samples + j] / pointsPerClass[i];
+                    float diff = oldVal - newVal;
+                    local_maxDist = fmaxf(local_maxDist, diff * diff);
+					centroids[i * samples + j] = newVal;                
+				}
+            }
 		}
 
 		// Reduce to find the maximum distance across all processes
 		// This ensures all process receives the largest maxDist found
 		MPI_Allreduce(&local_maxDist, &maxDist, 1, MPI_FLOAT, MPI_MAX, MPI_COMM_WORLD);
-
-		// Gather all local centroids into the global centroids array
-		// This ensures all processes have updated centroids for the next iteration
-		MPI_Allgatherv(local_centroids, local_k * samples, MPI_FLOAT, centroids, centroid_sendcounts, centroid_displs, MPI_FLOAT, MPI_COMM_WORLD);
-		// MPI_Allgatherv gathers variable amounts of data from all processes and distributes
-		// the combined data to all processes. This updates the centroids for the next iteration.
 
 		// Wait if the non-blocking reduction didn't complete
 		MPI_Wait(&MPI_REQUEST, MPI_STATUS_IGNORE);
@@ -590,7 +541,7 @@ int main(int argc, char *argv[])
 			printf("\n\nTermination condition: Centroid update precision reached: %g [%g]", maxDist, maxThreshold);
 		}
 
-		int error = writeResult(classMap, lines, argv[6]); // Add max_computation_time if use on cluster
+		int error = writeResult(classMap, lines, argv[6], max_computation_time); // Add max_computation_time if use on cluster
 		if (error != 0)
 		{
 			showFileError(error, argv[6]);
@@ -601,11 +552,8 @@ int main(int argc, char *argv[])
 	//	FREE LOCAL ARRAYS: Free memory allocated for each process
 	free(local_data);
 	free(local_classMap);
-	free(local_centroids);
 	free(sendcounts);
 	free(displs);
-	free(centroid_sendcounts);
-	free(centroid_displs);
 	free(recvcounts);
 	free(rdispls);
 

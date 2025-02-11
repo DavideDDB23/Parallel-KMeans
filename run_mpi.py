@@ -269,7 +269,7 @@ queue
     # ---------------------------
     # Write the raw data into a CSV table.
     # ---------------------------
-    raw_csv_file = "computation_times.csv"
+    raw_csv_file = "computation_times_mpi.csv"
     try:
         with open(raw_csv_file, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)

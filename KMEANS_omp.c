@@ -131,7 +131,7 @@ int readInput2(char *filename, float *data)
 /*
 Function writeResult: It writes in the output file the cluster of each sample (point).
 */
-int writeResult(int *classMap, int lines, const char *filename) // Aggiungi computationTime se usi file per runnare cluster
+int writeResult(int *classMap, int lines, const char *filename, float computationTime)
 {
 	FILE *fp;
 
@@ -142,7 +142,7 @@ int writeResult(int *classMap, int lines, const char *filename) // Aggiungi comp
 			fprintf(fp, "%d\n", classMap[i]);
 		}
 
-//		fprintf(fp, "Computation: %f seconds\n", computationTime);
+		fprintf(fp, "Computation: %f seconds\n", computationTime);
 		fclose(fp);
 
 		return 0;
@@ -442,7 +442,7 @@ int main(int argc, char *argv[])
 
 	// END CLOCK*****************************************
 	end = omp_get_wtime();
-//	float computationTime = end - start;
+	float computationTime = end - start;
 	printf("\nComputation: %f seconds", end - start);
 	fflush(stdout);
 	//**************************************************
@@ -464,7 +464,7 @@ int main(int argc, char *argv[])
 	}
 
 	// Writing the classification of each point to the output file.
-	error = writeResult(classMap, lines, argv[6]); // Add computationTime if use on cluster
+	error = writeResult(classMap, lines, argv[6], computationTime);
 	if (error != 0)
 	{
 		showFileError(error, argv[6]);
