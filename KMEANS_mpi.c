@@ -173,6 +173,8 @@ float euclideanDistance(float *point, float *center, int samples)
 	float dist = 0.0;
 	for (int i = 0; i < samples; i++)
 	{
+		// Fused multiply-add, computes (a * b) + c in a single, efficient step
+		// Reduce rounding errors, for consistency of results across all implementations
 		dist = fmaf(point[i] - center[i], point[i] - center[i], dist);
 	}
 	return dist; // Squared distance
@@ -210,7 +212,7 @@ int main(int argc, char *argv[])
 
 	// START CLOCK***************************************
 	double start, end;
-	MPI_Barrier(MPI_COMM_WORLD); // Ensure that all processes start timer at the same time.
+	MPI_Barrier(MPI_COMM_WORLD); // Synchronize all processes, so they start timer at the same time.
 	start = MPI_Wtime();
 	//**************************************************
 
@@ -279,6 +281,7 @@ int main(int argc, char *argv[])
 	int minChanges = (int)(lines * atof(argv[4]) / 100.0);
 	float maxThreshold = atof(argv[5]);
 
+	// Allocate memory for centroid
 	float *centroids = (float *)calloc(K * samples, sizeof(float));
 	if (centroids == NULL)
 	{
@@ -287,7 +290,7 @@ int main(int argc, char *argv[])
 	}
 	int *classMap = NULL;
 
-	// Rank 0 must initialize centroids and class mappings, all other processes will get the arrays from it
+	// Rank 0 initialize centroids and class mappings, all other processes will get the arrays from it
 	if (rank == 0)
 	{
 		int *centroidPos = (int *)calloc(K, sizeof(int));
@@ -315,7 +318,7 @@ int main(int argc, char *argv[])
 		printf("\tMaximum centroid precision: %f\n", maxThreshold);
 	}
 
-	// Broadcast the centroids to all the processes
+    // Broadcast the initial centroids to all processes so they all start with the same values.
 	MPI_Bcast(centroids, K * samples, MPI_FLOAT, 0, MPI_COMM_WORLD);
 
 	// END CLOCK*****************************************
@@ -324,12 +327,11 @@ int main(int argc, char *argv[])
 	fflush(stdout);
 	//**************************************************
 	// START CLOCK***************************************
-	MPI_Barrier(MPI_COMM_WORLD); // Ensure that all processes start timer at the same time.
+	MPI_Barrier(MPI_COMM_WORLD); // Synchronize all processes, so they start timer at the same time.
 	start = MPI_Wtime();
 	//**************************************************
 
 	char *outputMsg = NULL;
-
 	if (rank == 0)
 	{
 		outputMsg = (char *)calloc(10000, sizeof(char));
@@ -339,8 +341,9 @@ int main(int argc, char *argv[])
 	int changes;
 	float maxDist;
 
-	// pointPerClass: number of points classified in each class.
-	// auxCentroids: mean of the points in each class.
+	// Arrays for computing the new centroids:
+	// pointPerClass: counts how many points are assigned to each centroid.
+	// auxCentroids: accumulates the sum of coordinates for points in each centroid.
 	int *pointsPerClass = (int *)malloc(K * sizeof(int));
 	float *auxCentroids = (float *)malloc(K * samples * sizeof(float));
 	if (pointsPerClass == NULL || auxCentroids == NULL)
@@ -349,7 +352,7 @@ int main(int argc, char *argv[])
 		MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
 	}
 
-	//  VALUES NEEDED FOR STEP 1: Distribute data points among processes, Works also with odd number of points / processes.
+	// VALUES NEEDED FOR STEP 1: Distribute data points among processes, works also with odd number of points / processes.
 	int *sendcounts = (int *)malloc(size * sizeof(int)); // Array that stores how many data points each process will receive.
 	int *displs = (int *)malloc(size * sizeof(int)); // Array that store the starting index (offset) of each process’s portion in the main data array.
 	// sendcounts and displs have size 'size', since there are size processes, each array contains an entry for each process.
@@ -365,9 +368,9 @@ int main(int argc, char *argv[])
 		sum += sendcounts[i];					  // Update the sum variable by adding the number of elements assigned to this process, so next process displs is correctly calculated.
 	}
 
-	// Calculate the number of local lines (data points) for each process.
+	// Calculate the number of local lines (data points) for this process.
 	int local_lines = sendcounts[rank] / samples;
-	// Allocate memory for local data points and their class assignments.
+	// Allocate memory for local data points and their corresponding class assignments.
 	float *local_data = (float *)calloc(local_lines * samples, sizeof(float)); // Stores the portion of data points assigned to the process.
 	int *local_classMap = (int *)calloc(local_lines, sizeof(int));			   // Stores the class assignments for the data points.
 	if (local_data == NULL || local_classMap == NULL)
@@ -385,9 +388,11 @@ int main(int argc, char *argv[])
 		it++; // Increment iteration counter
 
 		/* -------------------------------------------------------------------
-		 *  STEP 1: Assign points to nearest centroid
-		 *	Calculate the distance from each point to the centroid
-		 *	Assign each point to the nearest centroid.
+		 * STEP 1: Assign points to nearest centroid
+		 *
+		 * Each process computes the squared Euclidean distance (using fmaf)
+         * between its local data points and all centroids. The point is assigned
+         * to the cluster with the minimum distance.
 		 ------------------------------------------------------------------- */
 
 		int local_changes = 0; // Counter for changes in cluster assignments, local to each process
@@ -429,7 +434,11 @@ int main(int argc, char *argv[])
 		MPI_Iallreduce(&local_changes, &changes, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, &MPI_REQUEST);
 
 		/* -------------------------------------------------------------------
-		 *    STEP 2: Recalculate centroids (cluster means)
+		 * STEP 2: Recalculate centroids (cluster means)
+		 *
+		 * Each process computes a partial sum (auxCentroids) and count (pointsPerClass)
+         * for the data points assigned to each cluster. Then, MPI_Allreduce is used to sum
+         * these partial results across all processes so that every process obtains the global sums.
 		 ------------------------------------------------------------------- */
 
 		// Initialize pointsPerClass and auxCentroids
@@ -454,8 +463,11 @@ int main(int argc, char *argv[])
 		MPI_Allreduce(MPI_IN_PLACE, auxCentroids, K * samples, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 
 		/* -------------------------------------------------------------------
-		*  STEP 3: Check convergence
-		*  Compute the maximum distance between old and new centroids
+		 * STEP 3: Check convergence
+		 *
+		 * For each centroid, compute the squared difference between its old and new position.
+         * The maximum squared difference (local_maxDist) is calculated locally and then reduced
+         * globally using MPI_Allreduce.
 		 ------------------------------------------------------------------- */
 
 		float local_maxDist = 0.0f;
@@ -463,14 +475,27 @@ int main(int argc, char *argv[])
 		// For each centroid...
 		for (int i = 0; i < K; i++)
 		{
+			// Only update the centroid if there is at least one point assigned to it.
 			if (pointsPerClass[i] > 0)
             {
+				// For each centroid's dimension...
                 for (int j = 0; j < samples; j++)
                 {
+					// Old value of the centroid for the current dimension
                     float oldVal = centroids[i * samples + j];
+					
+					// Compute new value of the centroid in this dimension by averaging
+					// the sum of coordinates (accumulated in auxCentroids) for all points assigned
+                    // to the centroid, divided by the number of points (pointsPerClass).
                     float newVal = auxCentroids[i * samples + j] / pointsPerClass[i];
+					
+					// Calculate the difference between the old and new coordinate values.
                     float diff = oldVal - newVal;
+					
+					// Update local_maxDist with the squared difference if it is larger than the current maximum.
                     local_maxDist = fmaxf(local_maxDist, diff * diff);
+					
+					// Update the centroid's coordinate with the newly computed value.
 					centroids[i * samples + j] = newVal;              
 				}
             }
@@ -485,7 +510,13 @@ int main(int argc, char *argv[])
 
 	} while ((changes > minChanges) && (it < maxIterations) && (maxDist > pow(maxThreshold, 2)));
 
-	// Prepare to gather the class assignments from all processes
+    /*
+     * Gather the final class assignments from all processes.
+     *
+     * Since the number of data points per process may differ,
+     * MPI_Gatherv is used to collect the local_classMap arrays from each process
+     * back to the root process.
+     */
 	int *recvcounts = (int *)malloc(size * sizeof(int));
 	int *rdispls = (int *)malloc(size * sizeof(int));
 	sum = 0;
@@ -519,7 +550,7 @@ int main(int argc, char *argv[])
 	}
 	//**************************************************
 	// START CLOCK***************************************
-	MPI_Barrier(MPI_COMM_WORLD); // Ensure that all processes start timer at the same time
+	MPI_Barrier(MPI_COMM_WORLD); // Synchronize all processes, so they start timer at the same time.
 	start = MPI_Wtime();
 	//**************************************************
 
@@ -546,7 +577,7 @@ int main(int argc, char *argv[])
 		fflush(stdout);
 	}
 
-	//	FREE LOCAL ARRAYS: Free memory allocated for each process
+	// FREE LOCAL ARRAYS: Free memory allocated for each process
 	free(local_data);
 	free(local_classMap);
 	free(sendcounts);
@@ -554,7 +585,7 @@ int main(int argc, char *argv[])
 	free(recvcounts);
 	free(rdispls);
 
-	//	Free memory on the root process
+	// Free memory on the root process
 	if (rank == 0)
 	{
 		free(data);
@@ -572,7 +603,7 @@ int main(int argc, char *argv[])
 	fflush(stdout);
 	//***************************************************/
 
-	//	FINALIZE: Clean up the MPI environment
+	// FINALIZE: Clean up the MPI environment
 	MPI_Finalize();
 	return 0;
 }
