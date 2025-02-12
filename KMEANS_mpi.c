@@ -129,7 +129,7 @@ int readInput2(char *filename, float *data)
 /*
 Function writeResult: It writes in the output file the cluster of each sample (point).
 */
-int writeResult(int *classMap, int lines, const char *filename, double max_computation_time) //aggiungi max_computation_time se usi file per runnare cluster
+int writeResult(int *classMap, int lines, const char *filename)
 {
 	FILE *fp;
 
@@ -139,8 +139,6 @@ int writeResult(int *classMap, int lines, const char *filename, double max_compu
 		{
 			fprintf(fp, "%d\n", classMap[i]);
 		}
-		
-		fprintf(fp, "Computation: %f seconds\n", max_computation_time);
         fclose(fp);
 
 		return 0;
@@ -175,7 +173,6 @@ float euclideanDistance(float *point, float *center, int samples)
 	float dist = 0.0;
 	for (int i = 0; i < samples; i++)
 	{
-		// dist+= (point[i]-center[i])*(point[i]-center[i]);
 		dist = fmaf(point[i] - center[i], point[i] - center[i], dist);
 	}
 	return dist; // Squared distance
@@ -213,7 +210,7 @@ int main(int argc, char *argv[])
 
 	// START CLOCK***************************************
 	double start, end;
-	MPI_Barrier(MPI_COMM_WORLD);
+	MPI_Barrier(MPI_COMM_WORLD); // Ensure that all processes start timer at the same time.
 	start = MPI_Wtime();
 	//**************************************************
 
@@ -436,8 +433,8 @@ int main(int argc, char *argv[])
 		 ------------------------------------------------------------------- */
 
 		// Initialize pointsPerClass and auxCentroids
-		zeroIntArray(pointsPerClass, K);		   // Reset cluster counts (number of points in the class)
-		zeroFloatMatriz(auxCentroids, K, samples); // Reset centroid accumulator (mean of points in the class)
+		zeroIntArray(pointsPerClass, K);		   
+		zeroFloatMatriz(auxCentroids, K, samples); 
 
 		// Sum the coordinate of all local points
 		for (int i = 0; i < local_lines; i++)
@@ -463,7 +460,7 @@ int main(int argc, char *argv[])
 
 		float local_maxDist = 0.0f;
 
-		// For each local centroid handled by this process...
+		// For each centroid...
 		for (int i = 0; i < K; i++)
 		{
 			if (pointsPerClass[i] > 0)
@@ -474,7 +471,7 @@ int main(int argc, char *argv[])
                     float newVal = auxCentroids[i * samples + j] / pointsPerClass[i];
                     float diff = oldVal - newVal;
                     local_maxDist = fmaxf(local_maxDist, diff * diff);
-					centroids[i * samples + j] = newVal;                
+					centroids[i * samples + j] = newVal;              
 				}
             }
 		}
@@ -541,12 +538,12 @@ int main(int argc, char *argv[])
 			printf("\n\nTermination condition: Centroid update precision reached: %g [%g]", maxDist, maxThreshold);
 		}
 
-		int error = writeResult(classMap, lines, argv[6], max_computation_time); // Add max_computation_time if use on cluster
-		if (error != 0)
+		int error = writeResult(classMap, lines, argv[6]);
 		{
 			showFileError(error, argv[6]);
 			MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
 		}
+		fflush(stdout);
 	}
 
 	//	FREE LOCAL ARRAYS: Free memory allocated for each process
