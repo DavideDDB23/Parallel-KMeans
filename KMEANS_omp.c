@@ -494,7 +494,7 @@ int main(int argc, char *argv[])
 	}
 
 	// Writing the classification of each point to the output file.
-	error = writeResult(classMap, lines, argv[6], computationTime);
+	error = writeResult(classMap, lines, argv[6]);
 	if (error != 0)
 	{
 		showFileError(error, argv[6]);
