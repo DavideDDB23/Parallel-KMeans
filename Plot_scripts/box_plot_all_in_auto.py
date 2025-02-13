@@ -20,7 +20,7 @@ data_frames = {
 }
 
 # Selected test file
-selected_file = '1600k_100.inp'
+selected_file = 'input100D.inp'
 
 # Determine optimal MPI processes based on the lowest average time
 mpi_df = data_frames["MPI"]
