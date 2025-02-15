@@ -312,11 +312,7 @@ int main(int argc, char *argv[])
 	int terminate = 0; // boolean to control the loop
 
 	// Start the parallel region
-	#pragma omp parallel default(none)                                     \
-	firstprivate(lines, samples, K)                                        \
-	shared(data, centroids, auxCentroids, classMap, pointsPerClass,        \
-			   it, changes, maxDist, terminate, minChanges, maxIterations, \
-			   maxThreshold)
+	#pragma omp parallel
 	{
 		while (1)
 		{
