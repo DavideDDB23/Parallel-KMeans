@@ -275,7 +275,7 @@ int main(int argc, char *argv[])
 	// auxCentroids: mean of the points in each class
 	int *pointsPerClass = NULL;
 	float *auxCentroids = NULL;
-	// Allocate padded memory for pointsPerClass to minimize false sharing (each class gets extra cache line space)
+	// Allocate padded memory for pointsPerClass to minimize false sharing (each element gets extra cache line space)
 	if (posix_memalign((void **)&pointsPerClass, 64, sizeof(int) * K * PADDING) != 0)
 	{
 		fprintf(stderr, "posix_memalign for pointsPerClass failed.\n");
@@ -375,8 +375,8 @@ int main(int argc, char *argv[])
 			/* -------------------------------------------------------------------
 			* STEP 2: Recomput centroids (cluster means)
 			*    
-			* Sum all points belonging to a cluster in auxCentroids, 
-			* and keep counts of how many points in pointsPerClass
+			* Sum all points coordintes belonging to a cluster in auxCentroids, 
+			* and keep counts of assigments in pointsPerClass
 			------------------------------------------------------------------- */
 
 			#pragma omp for schedule(static)
@@ -392,7 +392,7 @@ int main(int argc, char *argv[])
 			}
 
 			// For each point, add its coordinates to the corresponding cluster's entry in auxCentroids,
-			// and increment the cluster count in pointsPerClass.
+			// and increment the cluster assignments count in pointsPerClass.
 			// Reduction clause with array sections ensures each thread uses its own local
         	// copy of the arrays, and then OpenMP combines them element-wise at the end.
 			#pragma omp for schedule(static) \
@@ -421,7 +421,7 @@ int main(int argc, char *argv[])
 			}
 
 			// 'maxDist' is shared, but 'reduction(+ : maxDist)' ensures that each 
-        	// thread computes its own local maximum distance, and 
+        	// thread computes its own local maximum centroid movement, and 
         	// OpenMP takes the maximum of these values at the end of the loop.
 			#pragma omp for reduction(max : maxDist) schedule(static)
 			// For each centroid...
@@ -453,7 +453,7 @@ int main(int argc, char *argv[])
 				// Copy new centroids into the real centroids array -- Update centroids
 				memcpy(centroids, auxCentroids, sizeof(float) * K * samples);
 
-				// If convergence criteria are met, we set 'terminate = 1', so that in the
+				// If convergence criteria are met, I set 'terminate = 1', so that in the
 				// next iteration all threads will exit from the while loop.
 				if ((changes <= minChanges) || (it >= maxIterations) || (maxDist <= pow(maxThreshold, 2)))
 				{
@@ -489,7 +489,6 @@ int main(int argc, char *argv[])
 		printf("\n\nTermination condition:\nCentroid update precision reached: %g [%g]", maxDist, maxThreshold);
 	}
 
-	// Writing the classification of each point to the output file.
 	error = writeResult(classMap, lines, argv[6]);
 	if (error != 0)
 	{

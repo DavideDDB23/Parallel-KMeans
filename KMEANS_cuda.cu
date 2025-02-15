@@ -180,7 +180,7 @@ void initCentroids(const float *data, float* centroids, int* centroidPos, int sa
 }
 
 // Constant memory declarations for read-only parameters.
-// Copy these variables from host once and used by all kernels without further data transfers.
+// These variables are copied from host once and used by all kernels without further data transfers.
 __constant__ int gpu_K; // Number of clusters
 __constant__ int gpu_n; // Number of data points (lines)
 __constant__ int gpu_d; // Number of dimensions (samples)
@@ -209,9 +209,9 @@ __device__ inline float custom_atomic_max(float *value_address, float val)
  *   - Updates the global assignment array (classMap) and counts the number of changes.
  *
  * Dynamic shared memory:
- *     - sharedCentroids: gpu_K * gpu_d (copy of the centroids)
- *     - blockSums: gpu_K * gpu_d       (partial sums for each centroid)
- *     - blockCounts: gpu_K             (number of points assigned per centroid)
+ *     - sharedCentroids: K * samples * sizeof(float)   (copy of the centroids)
+ *     - blockSums: K * samples * sizeof(float)         (partial sums for each centroid)
+ *     - blockCounts: K * sizeof(int)                   (number of points assigned per centroid)
  */
 __global__ void step_1_kernel(float *data,
                               float *centroids,
@@ -262,7 +262,7 @@ __global__ void step_1_kernel(float *data,
     }
     __syncthreads();
 
-     // Each thread processes one data point.
+    // Each thread processes one data point.
     if (idx < lines)
     {
         const float *point = &data[idx * samples];
@@ -290,7 +290,7 @@ __global__ void step_1_kernel(float *data,
             }
         }
 
-        // If the class changed, increment the local change counter
+        // If the class changed, increment atomically blockChanges
         if (classMap[idx] != class_idx)
         {
             atomicAdd(&blockChanges, 1);
@@ -312,10 +312,10 @@ __global__ void step_1_kernel(float *data,
     // One thread (tid==0) per block updates the global accumulators.
     if (tid == 0)
     {
-        // Add local changes to the global changes counter
+        // Add blockChanges to the global changes counter
         atomicAdd(changes_return, blockChanges);
 
-        // For each centroid... add local sums and counts to the global sums and counts
+        // For each centroid... add block sums and counts to the global sums and counts
         for (int c = 0; c < K; c++)
         {
             atomicAdd(&globalCounts[c], blockCounts[c]);
@@ -494,15 +494,6 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Memory allocation error.\n");
         exit(-4);
     }
-
-    // ------------------------------------------------------------
-    // Kernel Configuration
-    //
-    // For each block, store:
-    // - K * samples floats for centroids
-    // - K * samples floats for partial sums
-    // - K integers for counts
-    // ------------------------------------------------------------
     
     // Calculate dynamic shared memory needed for step_1_kernel.
     int sharedMemSize = 2 * K * samples * sizeof(float) + K * sizeof(int);

@@ -359,7 +359,7 @@ int main(int argc, char *argv[])
     }
 
     // Allocate a contiguous array for pointsPerClass to perform an efficient MPI_Allreduce.
-    // The padded pointsPerClass array is not contiguous in memory, so we copy its elements into
+    // The padded pointsPerClass array is not contiguous in memory, so I copy its elements into
     // pointsPerClassContig before the MPI reduction.
     int *pointsPerClassContig = (int *)malloc(K * sizeof(int));
     if (pointsPerClassContig == NULL)
@@ -369,9 +369,9 @@ int main(int argc, char *argv[])
     }
 
     // VALUES NEEDED FOR STEP 1: Distribute data points among processes, works also with odd number of points / processes.
-	int *sendcounts = (int *)malloc(size * sizeof(int)); // Array that stores how many data points each process will receive.
-	int *displs = (int *)malloc(size * sizeof(int)); // Array that store the starting index (offset) of each process’s portion in the main data array.
-	// sendcounts and displs have size 'size', since there are size processes, each array contains an entry for each process.
+	// 	Each array contains an entry for each process
+    int *sendcounts = (int *)malloc(size * sizeof(int)); // Array that stores how many data points each process will receive.
+	int *displs = (int *)malloc(size * sizeof(int)); // Array that store the starting index (offset) of each process’s portion in the data array.
 
 	int remainder = lines % size;
 	int sum = 0; // To calculate the starting position for each process’s data.
@@ -521,7 +521,7 @@ int main(int argc, char *argv[])
         float local_maxDist = 0.0f;
 
         // 'local_maxDist' is shared, but 'reduction(+ : local_maxDist)' ensures that each 
-        // thread computes its own local maximum distance, and 
+        // thread computes its own local maximum movement, and 
         // OpenMP takes the maximum of these values at the end of the loop.
         #pragma omp parallel for reduction(max:local_maxDist) schedule(static)
         // For each centroid...

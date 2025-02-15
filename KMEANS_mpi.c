@@ -353,9 +353,9 @@ int main(int argc, char *argv[])
 	}
 
 	// VALUES NEEDED FOR STEP 1: Distribute data points among processes, works also with odd number of points / processes.
+	// Each array contains an entry for each process.
 	int *sendcounts = (int *)malloc(size * sizeof(int)); // Array that stores how many data points each process will receive.
-	int *displs = (int *)malloc(size * sizeof(int)); // Array that store the starting index (offset) of each process’s portion in the main data array.
-	// sendcounts and displs have size 'size', since there are size processes, each array contains an entry for each process.
+	int *displs = (int *)malloc(size * sizeof(int)); // Array that store the starting index (offset) of each process’s portion in the data array.
 
 	int remainder = lines % size;
 	int sum = 0; // To calculate the starting position for each process’s data.
