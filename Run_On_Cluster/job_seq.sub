@@ -2,7 +2,7 @@ universe = vanilla
 
 executable = ./KMEANS_seq.out
 
-arguments = test_files/input100D2.inp 15 5000 1 0.0001 out100D2seq.txt
+arguments = test_files/input100D2.inp 20 5000 1 0.0001 out100D2seq.txt
 
 output = logs/out_seq.
 error = logs/err_seq.

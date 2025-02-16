@@ -6,7 +6,7 @@
  * Parallel computing (Degree in Computer Engineering)
  * 2022/2023
  *
- * Version: 1.1 (Hybrid MPI+OMP with padded cluster counters)
+ * Version: 1.0
  *
  * (c) 2022 Diego García-Álvarez, Arturo Gonzalez-Escribano
  * Grupo Trasgo, Universidad de Valladolid (Spain)
@@ -276,7 +276,7 @@ int main(int argc, char *argv[])
 	MPI_Bcast(&lines, 1, MPI_INT, 0, MPI_COMM_WORLD);
 	MPI_Bcast(&samples, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    // Program parameters
+    // Parameters
     int K = atoi(argv[2]);
     int maxIterations = atoi(argv[3]);
     int minChanges = (int)(lines * atof(argv[4]) / 100.0);
@@ -369,7 +369,7 @@ int main(int argc, char *argv[])
     }
 
     // VALUES NEEDED FOR STEP 1: Distribute data points among processes, works also with odd number of points / processes.
-	// 	Each array contains an entry for each process
+	// Each array contains an entry for each process
     int *sendcounts = (int *)malloc(size * sizeof(int)); // Array that stores how many data points each process will receive.
 	int *displs = (int *)malloc(size * sizeof(int)); // Array that store the starting index (offset) of each process’s portion in the data array.
 
@@ -550,7 +550,7 @@ int main(int argc, char *argv[])
         }
 
        	// Reduce to find the maximum distance across all processes
-		// This ensures all process receives the largest maxDist found
+		// This ensures all process receives the largest distance found
 		MPI_Allreduce(&local_maxDist, &maxDist, 1, MPI_FLOAT, MPI_MAX, MPI_COMM_WORLD);
 
 		// Wait if the non-blocking reduction didn't complete

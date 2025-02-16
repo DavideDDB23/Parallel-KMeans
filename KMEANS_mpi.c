@@ -281,7 +281,7 @@ int main(int argc, char *argv[])
 	int minChanges = (int)(lines * atof(argv[4]) / 100.0);
 	float maxThreshold = atof(argv[5]);
 
-	// Allocate memory for centroid
+	// Allocate memory for centroids
 	float *centroids = (float *)calloc(K * samples, sizeof(float));
 	if (centroids == NULL)
 	{
